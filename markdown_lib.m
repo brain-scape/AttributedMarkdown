@@ -85,9 +85,8 @@ static element * process_raw_blocks(element *input, int extensions, element *ref
     return input;
 }
 
-NSMutableAttributedString* markdown_to_attr_string(NSString *text, int extensions, NSDictionary* attributes) {
-    NSMutableAttributedString *out = [[[NSMutableAttributedString alloc] init] autorelease];
-    
+element* markdown_to_element(NSString *text, int extensions)
+{
     NSMutableString *formatted_text = preformat_text(text);
     
     element *references = parse_references(formatted_text, extensions);
@@ -95,7 +94,18 @@ NSMutableAttributedString* markdown_to_attr_string(NSString *text, int extension
     element *result = parse_markdown(formatted_text, extensions, references, notes);
     result = process_raw_blocks(result, extensions, references, notes);
     
-    [out beginEditing];
+    free_element_list(references);
+    
+    return result;
+}
+
+NSMutableAttributedString* element_to_attr_string(struct Element* result,
+                                                  int extensions,
+                                                  NSDictionary* attributes,
+                                                  NSDictionary* defaultAttrs)
+{
+    NSMutableAttributedString *outStr = [[[NSMutableAttributedString alloc] init] autorelease];
+    [outStr beginEditing];
     
     NSDictionary *_attributes[] = {
         [LIST] =        [attributes objectForKey:[NSNumber numberWithInt:LIST]],
@@ -133,14 +143,29 @@ NSMutableAttributedString* markdown_to_attr_string(NSString *text, int extension
         [REFERENCE]=    [attributes objectForKey:[NSNumber numberWithInt:REFERENCE]],
         [NOTE]=         [attributes objectForKey:[NSNumber numberWithInt:NOTE]],
     };
-
     
-    print_element_list_attr(out, result, extensions, _attributes, @{});
-    [out endEditing];
+    
+    print_element_list_attr(outStr, result, extensions, _attributes, defaultAttrs);
+    [outStr endEditing];
+    
+    NSCharacterSet* nonWhitespace = [[NSCharacterSet whitespaceAndNewlineCharacterSet] invertedSet];
+    NSUInteger lastNonSpaceCharIndex = [outStr.string rangeOfCharacterFromSet:nonWhitespace options:NSBackwardsSearch].location;
+    
+    if (lastNonSpaceCharIndex != NSNotFound)
+    {
+        outStr = [[outStr attributedSubstringFromRange:NSMakeRange(0, lastNonSpaceCharIndex+1)] mutableCopy];
+    }
+    
+    return outStr;
+}
+
+NSMutableAttributedString* markdown_to_attr_string(NSString *text, int extensions, NSDictionary* attributes, NSDictionary* defaultAttrs)
+{
+    element * result = markdown_to_element(text, extensions);
+    NSMutableAttributedString* str = element_to_attr_string(result, extensions, attributes, defaultAttrs);
     
     free_element_list(result);
-    free_element_list(references);
-    return out;
+    return str;
 }
 
 @implementation NSString (Sugar)
